@@ -59,4 +59,87 @@ BEGIN {
   }
 }
 
+has checksum =>
+  sub ($self) { substr $self->to_header, TAR_USTAR_CHECKSUM_POS, TAR_USTAR_CHECKSUM_LEN };
+has dev_major => '';
+has dev_minor => '';
+has gid       => sub ($self) {$(};
+has group     => sub ($self) { +(getgrgid($self->gid) =~ /(.*)/)[0] || '' };
+has mode      => sub ($self) {0};
+has mtime     => sub ($self) {time};
+has owner     => sub ($self) { +(getpwuid($self->uid) =~ /(.*)/)[0] || '' };
+has path      => sub ($self) {''};
+has size      => sub ($self) {0};
+has symlink   => '';
+has type      => sub ($self) {'U'};
+has uid       => sub ($self) {$<};
+
+sub from_header ($self, $header) {
+  my @fields   = unpack $PACK_FORMAT, $header;
+  my $checksum = $self->_checksum($header);
+
+  $self->path(_trim_nul($fields[0]));    # TODO: Use slot #15 as well
+  $self->mode(_from_oct($fields[1]));
+  $self->uid(_from_oct($fields[2]));
+  $self->gid(_from_oct($fields[3]));
+  $self->size(_from_oct($fields[4]));
+  $self->mtime(_from_oct($fields[5]));
+  $self->checksum($checksum eq $fields[6] =~ s/\0\s$//r ? $checksum : '');
+  $self->type($fields[7] eq "\0"                        ? '0'       : $fields[7]);
+  $self->symlink(_trim_nul($fields[8]));
+  $self->owner(_trim_nul($fields[11]));
+  $self->group(_trim_nul($fields[12]));
+  $self->dev_major($fields[13]);
+  $self->dev_minor($fields[14]);
+
+  warn sprintf "[tar:from_header] %s\n", join ' ',
+    map { sprintf '%s=%s', $_, $self->$_ }
+    qw(path mode uid gid size mtime checksum type symlink owner group)
+    if DEBUG;
+
+  return $self;
+}
+
+sub to_header ($self) {
+  my $prefix = '';                                # TODO: Split path() into [0] and [15]
+  my $header = pack $PACK_FORMAT, $self->path,    # 0
+    sprintf('%06o ',  $self->mode),               # 1
+    sprintf('%06o ',  $self->uid),                # 2
+    sprintf('%06o ',  $self->gid),                # 3
+    sprintf('%011o ', $self->size),               # 4
+    sprintf('%011o ', $self->mtime),              # 5
+    '',                                           # 6 - checksum
+    $self->type,                                  # 7
+    $self->symlink,                               # 8
+    "ustar\0",                                    # 9 - ustar
+    '00',                                         # 10 - ustar version
+    $self->owner,                                 # 11
+    $self->group,                                 # 12
+    sprintf('%07s', $self->dev_major),            # 13
+    sprintf('%07s', $self->dev_minor),            # 14
+    $prefix,                                      # 15
+    '';                                           # 16 - padding
+
+  # Inject checksum
+  substr $header, TAR_USTAR_CHECKSUM_POS, TAR_USTAR_CHECKSUM_LEN, $self->_checksum($header) . "\0 ";
+
+  return $header;
+}
+
+sub _checksum ($self, $header) {
+  return sprintf '%06o', int unpack '%16C*', join '        ',
+    substr($header, 0, TAR_USTAR_CHECKSUM_POS), substr($header, TAR_USTAR_TYPE_POS);
+}
+
+sub _from_oct ($str) {
+  $str =~ s/^0+//;
+  $str =~ s/[\s\0]+$//;
+  return length($str) ? oct $str : -1;
+}
+
+sub _trim_nul ($str) {
+  my $idx = index $str, "\0";
+  return $idx == -1 ? $str : substr $str, 0, $idx;
+}
+
 1;
