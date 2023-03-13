@@ -1,7 +1,9 @@
 package Mojo::Tar;
 use Mojo::Base 'Mojo::EventEmitter', -signatures;
 
+use Carp qw(croak);
 use Mojo::Tar::File;
+use Scalar::Util qw(blessed);
 
 use constant DEBUG          => !!$ENV{MOJO_TAR_DEBUG};
 use constant TAR_BLOCK_SIZE => 512;
@@ -10,6 +12,38 @@ use constant TAR_BLOCK_PAD  => "\0" x TAR_BLOCK_SIZE;
 our $VERSION = '0.01';
 
 has is_complete => 0;
+
+sub create ($self, $files) {
+  my @files
+    = map { blessed($_) && $_->isa('Mojo::Tar::File') ? $_ : Mojo::Tar::File->new_from_path($_) }
+    @$files;
+
+  my ($current, $handle, $header, $read) = (undef, undef, '', 0);
+  my $cb = sub (@) {
+    unless ($current //= shift @files) {
+      return ''                 if $self->is_complete;
+      warn "[tar:create] EOF\n" if DEBUG;
+      return $self->is_complete(1)->emit('created') && TAR_BLOCK_PAD . TAR_BLOCK_PAD;
+    }
+    unless ($header) {
+      warn "[tar:create] Adding @{[$current->asset]}\n" if DEBUG;
+      $self->emit(adding => $current);
+      return $header = $current->to_header;
+    }
+
+    $handle //= $current->asset->open('<');
+    my $r = $handle->sysread(my $buffer, 131072) // croak "Unable to read @{[$current->asset]}: $!";
+    $read += $r;
+    return $buffer if length $buffer;
+
+    warn "[tar:create] Added @{[$current->asset]} ($read)\n" if DEBUG;
+    $self->emit(added => $current);
+    ($current, $handle, $header) = (undef, undef, '');
+    return __SUB__->();
+  };
+
+  return $self->is_complete(0) && $cb;
+}
 
 sub extract ($self, $bytes) {
   $self->{buf} .= $bytes;
@@ -79,6 +113,26 @@ The "pax" tar format is not planned, but a pull request is more than welcome!
 
 =head1 EVENTS
 
+=head2 adding
+
+  $tar->on(adding => sub ($tar, $file) { ... });
+
+Emitted right before the callback from L</create> returns the tar header for the
+C<$file>.
+
+=head2 added
+
+  $tar->on(added => sub ($tar, $file) { ... });
+
+Emitted after the callback from L</create> has returned all the content of the C<$file>.
+
+=head2 created
+
+  $tar->on(created => sub ($tar, @) { ... });
+
+Emitted right before the callback from L</create> returns the last chunk of the tar
+file.
+
 =head2 extracted
 
   $tar->on(extracted => sub ($tar, $file) { ... });
@@ -102,6 +156,24 @@ temp file.
 True if L</extract> thinks the whole tar file has been read.
 
 =head1 METHODS
+
+=head2 create
+
+  $cb = $tar->create(\@files);
+
+This method can take a list of L<Mojo::File>, L<Mojo::Tar::File> or plain
+scalars and return a callback that will return a chunk of the tar file each
+time it is called and an empty string when all files has been processed.
+
+Example:
+
+  while (length(my $chunk = $cb->())) {
+    warn sprintf qq(Got %sb of tar data\n), length $chunk;
+  }
+
+The L</adding> and L</added> events will be emitted for each file and the
+L</created> event will be emitted at the very end. In addition L</is_complete>
+will also be set right before L</created> gets emitted.
 
 =head2 extract
 

@@ -1,12 +1,14 @@
 package Mojo::Tar::File;
 use Mojo::Base -base, -signatures;
 
-use Carp       qw(croak);
-use Exporter   qw(import);
-use Mojo::File ();
+use Carp         qw(croak);
+use Exporter     qw(import);
+use Mojo::File   ();
+use Scalar::Util qw(blessed);
 
 use constant DEBUG => !!$ENV{MOJO_TAR_DEBUG};
 
+our $GID = $( =~ /(\d+)/ && int($1) || 0;
 our ($PACK_FORMAT, @EXPORT);
 
 BEGIN {
@@ -64,20 +66,19 @@ BEGIN {
 has asset => sub ($self) {Mojo::File::tempfile};
 has checksum =>
   sub ($self) { substr $self->to_header, TAR_USTAR_CHECKSUM_POS, TAR_USTAR_CHECKSUM_LEN };
-has dev_major => '';
-has dev_minor => '';
-has gid       => sub ($self) { $self->{asset} && $self->asset->stat->gid || $( };
-has group     => sub ($self) { getgrgid($self->gid)                      || '' };
-has is_complete =>
-  sub ($self) { $self->{asset} && $self->asset->stat->size == $self->size ? 1 : 0 };
-has mode    => sub ($self) { $self->{asset} && $self->asset->stat->mode  || 0 };
-has mtime   => sub ($self) { $self->{asset} && $self->asset->stat->mtime || time };
-has owner   => sub ($self) { getpwuid($self->uid) || '' };
-has path    => sub ($self) { $self->{asset} && $self->asset->to_string  || '' };
-has size    => sub ($self) { $self->{asset} && $self->asset->stat->size || 0 };
-has symlink => '';
-has type    => sub ($self) { $self->_build_type };
-has uid     => sub ($self) { $self->{asset} && $self->asset->stat->uid || $( };
+has dev_major   => '';
+has dev_minor   => '';
+has gid         => sub ($self) { $self->_stat('gid')  || $GID };
+has group       => sub ($self) { getgrgid($self->gid) || '' };
+has is_complete => sub ($self) { $self->_stat('size') == $self->size ? 1 : 0 };
+has mode        => sub ($self) { ($self->_stat('mode') || 0) & 0777 };
+has mtime       => sub ($self) { $self->_stat('mtime')   || time };
+has owner       => sub ($self) { getpwuid($self->uid)    || '' };
+has path        => sub ($self) { $self->asset->to_string || '' };
+has size        => sub ($self) { $self->_stat('size')    || 0 };
+has symlink     => '';
+has type        => sub ($self) { $self->_build_type };
+has uid         => sub ($self) { $self->_stat('uid') || $( };
 
 sub add_block ($self, $block) {
   return $self unless $self->type eq 0;
@@ -122,6 +123,10 @@ sub from_header ($self, $header) {
     if DEBUG;
 
   return $self;
+}
+
+sub new_from_path ($class, $path) {
+  return $class->new->asset(Mojo::File->new("$path"))->path("$path");
 }
 
 sub to_header ($self) {
@@ -177,6 +182,11 @@ sub _from_oct ($str) {
   $str =~ s/^0+//;
   $str =~ s/[\s\0]+$//;
   return length($str) ? oct $str : 0;
+}
+
+sub _stat ($self, $field) {
+  return undef unless my $stat = $self->{stat} //= $self->{asset} && $self->{asset}->stat || 0;
+  return $stat->$field;
 }
 
 sub _trim_nul ($str) {
@@ -328,6 +338,14 @@ Used to add a block from of bytes from the tar file to the L</asset>.
   $file = $file->from_header($bytes);
 
 Will parse the header chunk from the tar file and set the L</ATTRIBUTES>.
+
+=head2 new_from_path
+
+  $file = Mojo::Tar::File->new_from_path('some/file');
+  $file = Mojo::Tar::File->new_from_path(Mojo::File->new('some/file'));
+
+Creates a new L<Mojo::Tar::File> object with L</asset> and L</path> set to
+the input value. Other attributes will be lazy built.
 
 =head2 to_header
 

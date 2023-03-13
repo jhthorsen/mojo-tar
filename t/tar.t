@@ -49,4 +49,41 @@ subtest 'extract' => sub {
   is length($file->asset->slurp), $file->size,   'extracted file has matching file size';
 };
 
+subtest 'create' => sub {
+  my $tar = Mojo::Tar->new;
+  ok !$tar->is_complete, 'not complete';
+
+  my ($created, @files) = (0);
+  $tar->on(adding  => sub ($tar, $file) { push @files, $file });
+  $tar->on(added   => sub ($tar, $file) { is $file, exact_ref($files[-1]), 'added' });
+  $tar->on(created => sub ($tar, @) { $created++ });
+
+  my $files = Mojo::File->new->child('t')->list->map('to_rel');
+  my $cb    = $tar->create($files);
+  is ref($cb), 'CODE', 'got a callback from create()';
+
+  my $content = '';
+  while (length(my $chunk = $cb->())) {
+    $content .= $chunk;
+  }
+
+  ok $tar->is_complete, 'is complete';
+  is $created,                   1,                            'created';
+  is substr($content, -512 * 2), Mojo::Tar->TAR_BLOCK_PAD x 2, 'padded at the end';
+
+  my $files_size = $files->reduce(sub { $b->stat->size + $a }, 0);
+  ok $files_size < length($content), "tar size > $files_size";
+
+  my ($file) = grep { $_->path =~ /tar\.t$/ } @files;
+  like $file->path,  qr{tar\.t$}, 'file path';
+  like $file->group, qr{\w},      'file group';
+  like $file->owner, qr{\w},      'file owner';
+  is $file->size, -s __FILE__, 'file size';
+  is $file->type, 0,           'file type';
+  is $file->uid,  $<,          'file uid';
+  ok $file->gid > 0,            'file gid';
+  ok $file->mode >= 0600,       'file mode';
+  ok $file->mtime > 1000000000, 'file mtime';
+};
+
 done_testing;
