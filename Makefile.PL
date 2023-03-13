@@ -19,7 +19,7 @@ my %WriteMakefileArgs = (
     'dynamic_config' => 0,
     'meta-spec'      => {version   => 2},
     'no_index'       => {directory => [qw(examples t)]},
-    'prereqs'        => {runtime   => {requires => {perl => '5.016'}}},
+    'prereqs'        => {runtime   => {requires => {perl => '5.020'}}},
     'resources'      => {
       bugtracker => {web => "$GITHUB_URL/issues"},
       homepage   => $GITHUB_URL,
