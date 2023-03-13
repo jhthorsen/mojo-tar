@@ -1,7 +1,9 @@
 package Mojo::Tar::File;
 use Mojo::Base -base, -signatures;
 
+use Carp       qw(croak);
 use Exporter   qw(import);
+use Mojo::File ();
 
 use constant DEBUG => !!$ENV{MOJO_TAR_DEBUG};
 
@@ -59,20 +61,42 @@ BEGIN {
   }
 }
 
+has asset => sub ($self) {Mojo::File::tempfile};
 has checksum =>
   sub ($self) { substr $self->to_header, TAR_USTAR_CHECKSUM_POS, TAR_USTAR_CHECKSUM_LEN };
 has dev_major => '';
 has dev_minor => '';
-has gid       => sub ($self) {$(};
-has group     => sub ($self) { +(getgrgid($self->gid) =~ /(.*)/)[0] || '' };
-has mode      => sub ($self) {0};
-has mtime     => sub ($self) {time};
-has owner     => sub ($self) { +(getpwuid($self->uid) =~ /(.*)/)[0] || '' };
-has path      => sub ($self) {''};
-has size      => sub ($self) {0};
-has symlink   => '';
-has type      => sub ($self) {'U'};
-has uid       => sub ($self) {$<};
+has gid       => sub ($self) { $self->{asset} && $self->asset->stat->gid || $( };
+has group     => sub ($self) { getgrgid($self->gid)                      || '' };
+has is_complete =>
+  sub ($self) { $self->{asset} && $self->asset->stat->size == $self->size ? 1 : 0 };
+has mode    => sub ($self) { $self->{asset} && $self->asset->stat->mode  || 0 };
+has mtime   => sub ($self) { $self->{asset} && $self->asset->stat->mtime || time };
+has owner   => sub ($self) { getpwuid($self->uid) || '' };
+has path    => sub ($self) { $self->{asset} && $self->asset->to_string  || '' };
+has size    => sub ($self) { $self->{asset} && $self->asset->stat->size || 0 };
+has symlink => '';
+has type    => sub ($self) { $self->_build_type };
+has uid     => sub ($self) { $self->{asset} && $self->asset->stat->uid || $( };
+
+sub add_block ($self, $block) {
+  return $self unless $self->type eq 0;
+
+  $self->{bytes_added} //= 0;
+  my $chunk = substr $block, 0, $self->size - $self->{bytes_added};
+  $self->{bytes_added} += length $chunk;
+  croak 'File size is out of range' if $self->{bytes_added} > $self->size;
+
+  my $handle = $self->{add_block_handle} //= $self->asset->open('>');
+  ($handle->syswrite($chunk) // -1) == length $chunk or croak "Can't write to asset: $!";
+  $self->is_complete(1)->_cleanup if $self->{bytes_added} == $self->size;
+
+  warn sprintf "[tar:add_block] chunk=%s/%s size=%s/%s is_complete=%s path=%s\n", length($chunk),
+    length($block), $self->{bytes_added}, $self->size, $self->is_complete, $self->path
+    if DEBUG;
+
+  return $self;
+}
 
 sub from_header ($self, $header) {
   my @fields   = unpack $PACK_FORMAT, $header;
@@ -126,20 +150,40 @@ sub to_header ($self) {
   return $header;
 }
 
+sub _build_type ($self) {
+  return '0' unless my $asset = $self->{asset};
+  return '0' if -f $asset;                        # plain file
+  return '1' if -l _;                             # symlink
+  return '3' if -c _;                             # char dev
+  return '4' if -b _;                             # block dev
+  return '5' if -d _;                             # directory
+  return '6' if -p _;                             # pipe
+  return '8' if -s _;                             # socket
+  return '2' if $asset->stat->nlink > 1;          # hard link
+  return '9';                                     # unknown
+}
+
 sub _checksum ($self, $header) {
   return sprintf '%06o', int unpack '%16C*', join '        ',
     substr($header, 0, TAR_USTAR_CHECKSUM_POS), substr($header, TAR_USTAR_TYPE_POS);
 }
 
+sub _cleanup ($self) {
+  my $handle = delete $self->{add_block_handle};
+  $handle->close if $handle;
+}
+
 sub _from_oct ($str) {
   $str =~ s/^0+//;
   $str =~ s/[\s\0]+$//;
-  return length($str) ? oct $str : -1;
+  return length($str) ? oct $str : 0;
 }
 
 sub _trim_nul ($str) {
   my $idx = index $str, "\0";
   return $idx == -1 ? $str : substr $str, 0, $idx;
 }
+
+sub DESTROY ($self) { $self->_cleanup }
 
 1;
