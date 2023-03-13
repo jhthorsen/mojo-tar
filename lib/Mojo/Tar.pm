@@ -90,14 +90,31 @@ Mojo::Tar - Stream your (ustar) tar files
 
 =head1 SYNOPSIS
 
+=head2 Create
+
+  use Mojo::Tar
+  my $tar = Mojo::Tar->new;
+
+  $tar->on(adding => sub ($self, $file) {
+    warn sprintf qq(Adding "%s" %sb to archive\n), $file->path, $file->size;
+  });
+
+  my $cb = $tar->create('a.baz', 'b.foo');
+  open my $fh, '>', '/path/to/my-archive.tar';
+  while (length(my $chunk = $cb->())) {
+    print {$fh} $chunk;
+  }
+
+=head2 Extract
+
   use Mojo::Tar
   my $tar = Mojo::Tar->new;
 
   $tar->on(extracted => sub ($self, $file) {
-    warn sprintf qq(Got "%s" %sb\n), $file->path, $file->size;
+    warn sprintf qq(Extracted "%s" %sb\n), $file->path, $file->size;
   });
 
-  open my $fh, '<', 'some.tar';
+  open my $fh, '<', '/path/to/my-archive.tar';
   while (1) {
     sysread $fh, my ($chunk), 512 or die $!;
     $tar->extract($chunk);
@@ -105,13 +122,21 @@ Mojo::Tar - Stream your (ustar) tar files
 
 =head1 DESCRIPTION
 
-L<Mojo::Tar> can extract the "ustar" tar format in a streaming matter. This can
-be useful if for example your webserver is receiving a big tar file and you
-don't want to exhaust the memory while reading it.
+L<Mojo::Tar> can create and extract L<ustar|http://www.gnu.org/software/tar/manual/tar.html>
+tar files as a stream. This can be useful if for example your webserver is
+receiving a big tar file and you don't want to exhaust the memory while
+reading it.
 
-The "pax" tar format is not planned, but a pull request is more than welcome!
+The L<pax|http://www.opengroup.org/onlinepubs/007904975/utilities/pax.html>
+tar format is not planned, but a pull request is more than welcome!
 
 =head1 EVENTS
+
+=head2 added
+
+  $tar->on(added => sub ($tar, $file) { ... });
+
+Emitted after the callback from L</create> has returned all the content of the C<$file>.
 
 =head2 adding
 
@@ -119,12 +144,6 @@ The "pax" tar format is not planned, but a pull request is more than welcome!
 
 Emitted right before the callback from L</create> returns the tar header for the
 C<$file>.
-
-=head2 added
-
-  $tar->on(added => sub ($tar, $file) { ... });
-
-Emitted after the callback from L</create> has returned all the content of the C<$file>.
 
 =head2 created
 
@@ -153,7 +172,11 @@ temp file.
 
   $bool = $tar->is_complete;
 
-True if L</extract> thinks the whole tar file has been read.
+True when the callback from L</create> has returned the whole tar-file or when
+L</extract> thinks the whole tar file has been read.
+
+Note that because of this, L</create> and L</extract> should not be called on
+the same object.
 
 =head1 METHODS
 
@@ -162,7 +185,7 @@ True if L</extract> thinks the whole tar file has been read.
   $cb = $tar->create(\@files);
 
 This method can take a list of L<Mojo::File>, L<Mojo::Tar::File> or plain
-scalars and return a callback that will return a chunk of the tar file each
+strings and return a callback that will return a chunk of the tar file each
 time it is called and an empty string when all files has been processed.
 
 Example:
