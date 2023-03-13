@@ -187,3 +187,156 @@ sub _trim_nul ($str) {
 sub DESTROY ($self) { $self->_cleanup }
 
 1;
+
+=encoding utf8
+
+=head1 NAME
+
+Mojo::Tar::File - A Mojo::Tar file
+
+=head1 SYNOPSIS
+
+  my $file = Mojo::Tar->new(path => 'some/file.txt');
+
+  # This can be dangerous! Make sure path() does not contain ".."
+  # or other dangerous path parts.
+  $file->asset->move_to($file->path);
+
+=head1 DESCRIPTION
+
+L<Mojo::Asset::File> represents a tar file.
+
+=head1 ATTRIBUTES
+
+=head2 asset
+
+  $file = $file->asset(Mojo::File->new);
+  $asset = $file->asset;
+
+Returns a L<Mojo::File> object. Defaults to L<Mojo::File/tempfile>.
+
+This attribute is currently EXPERIMENTAL, but unlikely to change.
+
+=head2 checksum
+
+  $str = $file->checksum;
+
+Holds the checksum read by L</from_header> or contains empty string if
+the checksum does not match. This attribute can also be built from all the
+attributes if L</from_header> was not called.
+
+=head2 dev_major
+
+This attribute is not supported yet. Pull request welcome!
+
+=head2 dev_minor
+
+This attribute is not supported yet. Pull request welcome!
+
+=head2 gid
+
+  $file = $file->gid(1001);
+  $int = $file->gid;
+
+The numeric representation of L</group>.
+
+=head2 group
+
+  $file = $file->group('users')
+  $str = $file->group;
+
+The string representation of L</gid>.
+
+=head2 is_complete
+
+  $bool = $file->is_complete;
+
+Returns true if L</add_block> has added enough blocks to match L</size>.
+
+=head2 mode
+
+  $file = $file->mode(0644); # 0644 == 420
+  $int = $file->mode;
+
+The file mode. Note that this is 10-base, meaning C<$int> will be something
+like "420" and not "644".
+
+=head2 mtime
+
+  $file = $file->mtime(time);
+  $epoch = $file->mtime;
+
+Epoch timestamp for this file.
+
+=head2 owner
+
+  $file = $file->owner('jhthorsen')
+  $str = $file->owner;
+
+The string representation of L</uid>.
+
+=head2 path
+
+  $file = $file->path('some/file/or/directory');
+  $str = $file->path;
+
+The path from the tar file.
+
+TODO: Merge the "name" and "suffix" fields in the tar file.
+
+=head2 size
+
+  $file = $file->size(42);
+  $int = $file->size;
+
+The size of the file in bytes.
+
+=head2 symlink
+
+  $file = $file->symlink('path/for/symlink');
+  $str = $file->symlink;
+
+This attribute is not fully supported yet. Pull request welcome!
+
+=head2 type
+
+  $file = $file->type(5);
+  $str = $file->type;
+
+The tar file type.
+
+This attribute is currently EXPERIMENTAL and might change from raw
+representation to something more readable.
+
+=head2 uid
+
+  $file = $file->uid(1001);
+  $int = $file->uid;
+
+The numeric representation of L</owner>.
+
+=head1 METHODS
+
+=head2 add_block
+
+  $file = $file->add_block($bytes);
+
+Used to add a block from of bytes from the tar file to the L</asset>.
+
+=head2 from_header
+
+  $file = $file->from_header($bytes);
+
+Will parse the header chunk from the tar file and set the L</ATTRIBUTES>.
+
+=head2 to_header
+
+  $bytes = $file->to_header;
+
+Will construct a header chunk from the L</ATTRIBUTES>.
+
+=head1 SEE ALSO
+
+L<Mojo::Tar>.
+
+=cut
