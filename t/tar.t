@@ -34,7 +34,7 @@ subtest 'extract' => sub {
 
   my $fh = $example->open('<');
   while (1) {
-    sysread $fh, my ($chunk), 512 or last;
+    sysread $fh, my ($chunk), int(448 + rand 128) or last;
     $tar->extract($chunk);
   }
 

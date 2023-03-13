@@ -11,19 +11,27 @@ our $VERSION = '0.01';
 
 has is_complete => 0;
 
-sub extract ($self, $block) {
-  if (my $file = $self->{current}) {
-    $file->add_block($block);
-    $self->emit(extracted => delete $self->{current}) if $file->is_complete;
-  }
-  elsif ($block eq TAR_BLOCK_PAD) {
-    warn "[tar:extract] Got tar pad block\n" if DEBUG;
-    return $self->is_complete(1);
-  }
-  else {
-    my $file = Mojo::Tar::File->new->from_header($block);
-    $self->is_complete(0)->emit(extracting => $file);
-    $file->size ? ($self->{current} = $file) : $self->emit(extracted => $file);
+sub extract ($self, $bytes) {
+  $self->{buf} .= $bytes;
+
+  while (1) {
+    last if length($self->{buf}) < 512;
+    my $block = substr $self->{buf}, 0, 512, '';
+
+    if (my $file = $self->{current}) {
+      $file->add_block($block);
+      $self->emit(extracted => delete $self->{current}) if $file->is_complete;
+    }
+    elsif ($block eq TAR_BLOCK_PAD) {
+      warn "[tar:extract] Got tar pad block\n" if DEBUG;
+      $self->{buf} = '';
+      return $self->is_complete(1);
+    }
+    else {
+      my $file = Mojo::Tar::File->new->from_header($block);
+      $self->is_complete(0)->emit(extracting => $file);
+      $file->size ? ($self->{current} = $file) : $self->emit(extracted => $file);
+    }
   }
 
   return $self;
