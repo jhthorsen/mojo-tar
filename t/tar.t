@@ -1,8 +1,7 @@
 use Mojo::Base -strict, -signatures;
 use Test2::V0;
 
-use Mojo::Collection qw(c);
-use Mojo::File       qw(path);
+use Mojo::File qw(path);
 use Mojo::Tar;
 
 my $example = path(qw(t example.tar));
@@ -27,9 +26,10 @@ subtest 'looks_like_tar' => sub {
 
 subtest 'extract' => sub {
   my $tar = Mojo::Tar->new;
+  my $n   = $tar->files->size;
   ok !$tar->is_complete, 'not complete';
 
-  my $files = c();
+  my $files = Mojo::Collection->new;
   $tar->on(extracted => sub ($tar, $file) { push @$files, $file });
 
   my $fh = $example->open('<');
@@ -55,6 +55,8 @@ subtest 'extract' => sub {
 
   is +Mojo::Tar::File->new->from_header($file->to_header)->path, $file->path,
     'to_header() with prefix';
+
+  is $tar->files->size, $n + 11, 'files was modified';
 };
 
 subtest 'create' => sub {
@@ -66,8 +68,8 @@ subtest 'create' => sub {
   $tar->on(added   => sub ($tar, $file) { is $file, exact_ref($files[-1]), 'added' });
   $tar->on(created => sub ($tar, @) { $created++ });
 
-  my $files = Mojo::File->new->child('t')->list->map('to_rel');
-  my $cb    = $tar->create($files);
+  my $cb = $tar->files(Mojo::File->new->child('t')->list->map('to_rel'))->create;
+  my $n  = $tar->files->size;
   is ref($cb), 'CODE', 'got a callback from create()';
 
   my $content = '';
@@ -79,10 +81,10 @@ subtest 'create' => sub {
   is $created,                   1,                            'created';
   is substr($content, -512 * 2), Mojo::Tar->TAR_BLOCK_PAD x 2, 'padded at the end';
 
-  my $files_size = $files->reduce(sub { $b->stat->size + $a }, 0);
+  my $files_size = $tar->files->reduce(sub { $b->asset->stat->size + $a }, 0);
   ok $files_size < length($content), "tar size > $files_size";
 
-  my ($file) = grep { $_->path =~ /tar\.t$/ } @files;
+  my $file = $tar->files->grep(sub { $_->path =~ /tar\.t$/ })->first;
   like $file->path,  qr{tar\.t$}, 'file path';
   like $file->group, qr{\w},      'file group';
   like $file->owner, qr{\w},      'file owner';
@@ -92,6 +94,8 @@ subtest 'create' => sub {
   ok $file->gid > 0,            'file gid';
   ok $file->mode >= 0600,       'file mode';
   ok $file->mtime > 1000000000, 'file mtime';
+
+  is $tar->files->size, $n, 'files was not modified';
 };
 
 done_testing;

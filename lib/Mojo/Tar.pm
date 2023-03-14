@@ -2,6 +2,7 @@ package Mojo::Tar;
 use Mojo::Base 'Mojo::EventEmitter', -signatures;
 
 use Carp qw(croak);
+use Mojo::Collection;
 use Mojo::Tar::File;
 use Scalar::Util qw(blessed);
 
@@ -13,14 +14,10 @@ our $VERSION = '0.01';
 
 has is_complete => 0;
 
-sub create ($self, $files) {
-  my @files
-    = map { blessed($_) && $_->isa('Mojo::Tar::File') ? $_ : Mojo::Tar::File->new_from_path($_) }
-    @$files;
-
-  my ($current, $handle, $header, $read) = (undef, undef, '', 0);
+sub create ($self) {
+  my ($current, $handle, $header, $idx, $read) = (undef, undef, '', -1, 0);
   my $cb = sub (@) {
-    unless ($current //= shift @files) {
+    unless ($current //= $self->files->[++$idx]) {
       return ''                 if $self->is_complete;
       warn "[tar:create] EOF\n" if DEBUG;
       return $self->is_complete(1)->emit('created') && TAR_BLOCK_PAD . TAR_BLOCK_PAD;
@@ -63,8 +60,25 @@ sub extract ($self, $bytes) {
     }
     else {
       my $file = Mojo::Tar::File->new->from_header($block);
+      push @{$self->files}, $file;
       $self->is_complete(0)->emit(extracting => $file);
       $file->size ? ($self->{current} = $file) : $self->emit(extracted => $file);
+    }
+  }
+
+  return $self;
+}
+
+sub files ($self, $files = undef) {
+  return $self->{files} //= Mojo::Collection->new unless $files;
+
+  my $c = $self->{files} = Mojo::Collection->new;
+  for my $file (@$files) {
+    if (blessed($file) && $file->isa('Mojo::Tar::File')) {
+      push @$c, $file;
+    }
+    else {
+      push @$c, Mojo::Tar::File->new->asset(Mojo::File->new("$file"))->path("$file");
     }
   }
 
@@ -78,6 +92,12 @@ sub looks_like_tar ($self, $bytes) {
     : substr($bytes, TAR_USTAR_PADDING_POS, TAR_USTAR_PADDING_LEN) ne $padding ? 0
     : Mojo::Tar::File->new->from_header($bytes)->checksum                      ? 1
     :                                                                            0;
+}
+
+sub new ($class, @attrs) {
+  my $self = $class->SUPER::new(@attrs);
+  $self->files($self->{files}) if $self->{files};
+  return $self;
 }
 
 1;
@@ -99,7 +119,7 @@ Mojo::Tar - Stream your (ustar) tar files
     warn sprintf qq(Adding "%s" %sb to archive\n), $file->path, $file->size;
   });
 
-  my $cb = $tar->create('a.baz', 'b.foo');
+  my $cb = $tar->files(['a.baz', 'b.foo'])->create;
   open my $fh, '>', '/path/to/my-archive.tar';
   while (length(my $chunk = $cb->())) {
     print {$fh} $chunk;
@@ -168,6 +188,19 @@ temp file.
 
 =head1 ATTRIBUTES
 
+=head2 files
+
+  $tar = $tar->files(Mojo::Collection->new('a.file', ...)]);
+  $tar = $tar->files([Mojo::File->new]);
+  $tar = $tar->files([Mojo::Tar::File->new, ...]);
+  $collection = $tar->files;
+
+This attribute holds a L<Mojo::Collection> of L<Mojo::Tar::File> objects which
+is used by either L</create> or L</extract>.
+
+Setting this attribute will make sure each item is a L<Mojo::Tar::File> object,
+even if the original list contained a L<Mojo::File> or a plain string.
+
 =head2 is_complete
 
   $bool = $tar->is_complete;
@@ -182,13 +215,11 @@ the same object.
 
 =head2 create
 
-  $cb = $tar->create(\@files);
+  $cb = $tar->create;
 
-This method can take a list of L<Mojo::File>, L<Mojo::Tar::File> or plain
-strings and return a callback that will return a chunk of the tar file each
-time it is called and an empty string when all files has been processed.
-
-Example:
+This method will take L</files> and return a callback that will return a chunk
+of the tar file each time it is called, and an empty string when all files has
+been processed. Example:
 
   while (length(my $chunk = $cb->())) {
     warn sprintf qq(Got %sb of tar data\n), length $chunk;
@@ -212,6 +243,13 @@ objects which are emitted as L</extracting> and L</extracted> events.
 Returns true if L<Mojo::Tar> thinks C<$bytes> looks like the beginning of a
 tar stream. Currently this checks if C<$bytes> is at least 512 bytes long and
 the checksum value in the tar header is correct.
+
+=head2 new
+
+  $tar = Mojo::Tar->new(\%attrs);
+  $tar = Mojo::Tar->new(%attrs);
+
+Used to create a new L<Mojo::Tar> object. L</files> will be normalized.
 
 =head1 AUTHOR
 

@@ -128,10 +128,6 @@ sub from_header ($self, $header) {
   return $self;
 }
 
-sub new_from_path ($class, $path) {
-  return $class->new->asset(Mojo::File->new("$path"))->path("$path");
-}
-
 sub to_header ($self) {
   my ($name, $prefix) = (Mojo::File->new($self->path), '');
   ($name, $prefix) = ($name->basename, $name->dirname->to_string) if length($name) > 100;
@@ -343,14 +339,6 @@ Used to add a block from of bytes from the tar file to the L</asset>.
   $file = $file->from_header($bytes);
 
 Will parse the header chunk from the tar file and set the L</ATTRIBUTES>.
-
-=head2 new_from_path
-
-  $file = Mojo::Tar::File->new_from_path('some/file');
-  $file = Mojo::Tar::File->new_from_path(Mojo::File->new('some/file'));
-
-Creates a new L<Mojo::Tar::File> object with L</asset> and L</path> set to
-the input value. Other attributes will be lazy built.
 
 =head2 to_header
 
