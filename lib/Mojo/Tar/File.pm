@@ -103,7 +103,10 @@ sub from_header ($self, $header) {
   my @fields   = unpack $PACK_FORMAT, $header;
   my $checksum = $self->_checksum($header);
 
-  $self->path(_trim_nul($fields[0]));    # TODO: Use slot #15 as well
+  my ($prefix, $path) = map { _trim_nul($fields[$_]) } 15, 0;
+  $path = Mojo::File->new($prefix, $path)->to_string if length $prefix;
+
+  $self->path($path);
   $self->mode(_from_oct($fields[1]));
   $self->uid(_from_oct($fields[2]));
   $self->gid(_from_oct($fields[3]));
@@ -130,24 +133,27 @@ sub new_from_path ($class, $path) {
 }
 
 sub to_header ($self) {
-  my $prefix = '';                                # TODO: Split path() into [0] and [15]
-  my $header = pack $PACK_FORMAT, $self->path,    # 0
-    sprintf('%06o ',  $self->mode),               # 1
-    sprintf('%06o ',  $self->uid),                # 2
-    sprintf('%06o ',  $self->gid),                # 3
-    sprintf('%011o ', $self->size),               # 4
-    sprintf('%011o ', $self->mtime),              # 5
-    '',                                           # 6 - checksum
-    $self->type,                                  # 7
-    $self->symlink,                               # 8
-    "ustar\0",                                    # 9 - ustar
-    '00',                                         # 10 - ustar version
-    $self->owner,                                 # 11
-    $self->group,                                 # 12
-    sprintf('%07s', $self->dev_major),            # 13
-    sprintf('%07s', $self->dev_minor),            # 14
-    $prefix,                                      # 15
-    '';                                           # 16 - padding
+  my ($name, $prefix) = (Mojo::File->new($self->path), '');
+  ($name, $prefix) = ($name->basename, $name->dirname->to_string) if length($name) > 100;
+  croak qq(path "@{[$self->path]}" is too long) if length($name) > 100 or length($prefix) > 155;
+
+  my $header = pack $PACK_FORMAT, $name,    # 0
+    sprintf('%06o ',  $self->mode),         # 1
+    sprintf('%06o ',  $self->uid),          # 2
+    sprintf('%06o ',  $self->gid),          # 3
+    sprintf('%011o ', $self->size),         # 4
+    sprintf('%011o ', $self->mtime),        # 5
+    '',                                     # 6 - checksum
+    $self->type,                            # 7
+    $self->symlink,                         # 8
+    "ustar\0",                              # 9 - ustar
+    '00',                                   # 10 - ustar version
+    $self->owner,                           # 11
+    $self->group,                           # 12
+    sprintf('%07s', $self->dev_major),      # 13
+    sprintf('%07s', $self->dev_minor),      # 14
+    $prefix,                                # 15
+    '';                                     # 16 - padding
 
   # Inject checksum
   substr $header, TAR_USTAR_CHECKSUM_POS, TAR_USTAR_CHECKSUM_LEN, $self->_checksum($header) . "\0 ";
@@ -157,15 +163,15 @@ sub to_header ($self) {
 
 sub _build_type ($self) {
   return '0' unless my $asset = $self->{asset};
-  return '0' if -f $asset;                        # plain file
-  return '1' if -l _;                             # symlink
-  return '3' if -c _;                             # char dev
-  return '4' if -b _;                             # block dev
-  return '5' if -d _;                             # directory
-  return '6' if -p _;                             # pipe
-  return '8' if -s _;                             # socket
-  return '2' if $asset->stat->nlink > 1;          # hard link
-  return '9';                                     # unknown
+  return '0' if -f $asset;                  # plain file
+  return '1' if -l _;                       # symlink
+  return '3' if -c _;                       # char dev
+  return '4' if -b _;                       # block dev
+  return '5' if -d _;                       # directory
+  return '6' if -p _;                       # pipe
+  return '8' if -s _;                       # socket
+  return '2' if $asset->stat->nlink > 1;    # hard link
+  return '9';                               # unknown
 }
 
 sub _checksum ($self, $header) {
@@ -290,9 +296,8 @@ The string representation of L</uid>.
   $file = $file->path('some/file/or/directory');
   $str = $file->path;
 
-The path from the tar file.
-
-TODO: Merge the "name" and "suffix" fields in the tar file.
+The path from the tar file. This is constructed with both the filename and
+prefix (if any) in the ustar tar format.
 
 =head2 size
 

@@ -47,6 +47,14 @@ subtest 'extract' => sub {
   is $file->path,                 'Makefile.PL', 'file path';
   isnt $file->asset->path,        $file->path,   'asset is a temp file';
   is length($file->asset->slurp), $file->size,   'extracted file has matching file size';
+
+  $file = $files->grep(sub { $_->path =~ /\.txt$/ })->first;
+  is $file->path,
+    't/some/example/path/with/a/long/file/3ttakojrzqwvbamb00jfzjh9xur071ht2cqbsbw63bprfw69xnj4sqfqoyyyrsnip9re0y1foxsa7jc0yzyinvjngzg5udea.txt',
+    'file path with prefix';
+
+  is +Mojo::Tar::File->new->from_header($file->to_header)->path, $file->path,
+    'to_header() with prefix';
 };
 
 subtest 'create' => sub {
