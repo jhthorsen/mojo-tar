@@ -13,7 +13,7 @@ Mojo::Tar - Stream your (ustar) tar files
       warn sprintf qq(Adding "%s" %sb to archive\n), $file->path, $file->size;
     });
 
-    my $cb = $tar->create('a.baz', 'b.foo');
+    my $cb = $tar->files(['a.baz', 'b.foo'])->create;
     open my $fh, '>', '/path/to/my-archive.tar';
     while (length(my $chunk = $cb->())) {
       print {$fh} $chunk;
@@ -43,6 +43,9 @@ reading it.
 
 The [pax](http://www.opengroup.org/onlinepubs/007904975/utilities/pax.html)
 tar format is not planned, but a pull request is more than welcome!
+
+Note that this module is currently EXPERIMENTAL, but the API will only change
+if major design issues is discovered.
 
 # EVENTS
 
@@ -82,6 +85,19 @@ temp file.
 
 # ATTRIBUTES
 
+## files
+
+    $tar = $tar->files(Mojo::Collection->new('a.file', ...)]);
+    $tar = $tar->files([Mojo::File->new]);
+    $tar = $tar->files([Mojo::Tar::File->new, ...]);
+    $collection = $tar->files;
+
+This attribute holds a [Mojo::Collection](https://metacpan.org/pod/Mojo%3A%3ACollection) of [Mojo::Tar::File](https://metacpan.org/pod/Mojo%3A%3ATar%3A%3AFile) objects which
+is used by either ["create"](#create) or ["extract"](#extract).
+
+Setting this attribute will make sure each item is a [Mojo::Tar::File](https://metacpan.org/pod/Mojo%3A%3ATar%3A%3AFile) object,
+even if the original list contained a [Mojo::File](https://metacpan.org/pod/Mojo%3A%3AFile) or a plain string.
+
 ## is\_complete
 
     $bool = $tar->is_complete;
@@ -96,13 +112,11 @@ the same object.
 
 ## create
 
-    $cb = $tar->create(\@files);
+    $cb = $tar->create;
 
-This method can take a list of [Mojo::File](https://metacpan.org/pod/Mojo%3A%3AFile), [Mojo::Tar::File](https://metacpan.org/pod/Mojo%3A%3ATar%3A%3AFile) or plain
-strings and return a callback that will return a chunk of the tar file each
-time it is called and an empty string when all files has been processed.
-
-Example:
+This method will take ["files"](#files) and return a callback that will return a chunk
+of the tar file each time it is called, and an empty string when all files has
+been processed. Example:
 
     while (length(my $chunk = $cb->())) {
       warn sprintf qq(Got %sb of tar data\n), length $chunk;
@@ -126,6 +140,13 @@ objects which are emitted as ["extracting"](#extracting) and ["extracted"](#extr
 Returns true if [Mojo::Tar](https://metacpan.org/pod/Mojo%3A%3ATar) thinks `$bytes` looks like the beginning of a
 tar stream. Currently this checks if `$bytes` is at least 512 bytes long and
 the checksum value in the tar header is correct.
+
+## new
+
+    $tar = Mojo::Tar->new(\%attrs);
+    $tar = Mojo::Tar->new(%attrs);
+
+Used to create a new [Mojo::Tar](https://metacpan.org/pod/Mojo%3A%3ATar) object. ["files"](#files) will be normalized.
 
 # AUTHOR
 

@@ -150,6 +150,9 @@ reading it.
 The L<pax|http://www.opengroup.org/onlinepubs/007904975/utilities/pax.html>
 tar format is not planned, but a pull request is more than welcome!
 
+Note that this module is currently EXPERIMENTAL, but the API will only change
+if major design issues is discovered.
+
 =head1 EVENTS
 
 =head2 added
