@@ -63,10 +63,9 @@ subtest 'create' => sub {
   my $tar = Mojo::Tar->new;
   ok !$tar->is_complete, 'not complete';
 
-  my ($created, @files) = (0);
-  $tar->on(adding  => sub ($tar, $file) { push @files, $file });
-  $tar->on(added   => sub ($tar, $file) { is $file, exact_ref($files[-1]), 'added' });
-  $tar->on(created => sub ($tar, @) { $created++ });
+  my @files;
+  $tar->on(adding => sub ($tar, $file) { push @files, $file });
+  $tar->on(added => sub ($tar, $file) { is $file, exact_ref($files[-1]), 'added' });
 
   my $cb = $tar->files(Mojo::File->new->child('t')->list->map('to_rel'))->create;
   my $n  = $tar->files->size;
@@ -78,7 +77,6 @@ subtest 'create' => sub {
   }
 
   ok $tar->is_complete, 'is complete';
-  is $created,                   1,                            'created';
   is substr($content, -512 * 2), Mojo::Tar->TAR_BLOCK_PAD x 2, 'padded at the end';
 
   my $files_size = $tar->files->reduce(sub { $b->asset->stat->size + $a }, 0);

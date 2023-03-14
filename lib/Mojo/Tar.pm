@@ -20,7 +20,7 @@ sub create ($self) {
     unless ($current //= $self->files->[++$idx]) {
       return ''                 if $self->is_complete;
       warn "[tar:create] EOF\n" if DEBUG;
-      return $self->is_complete(1)->emit('created') && TAR_BLOCK_PAD . TAR_BLOCK_PAD;
+      return $self->is_complete(1) && TAR_BLOCK_PAD . TAR_BLOCK_PAD;
     }
     unless ($header) {
       warn "[tar:create] Adding @{[$current->asset]}\n" if DEBUG;
@@ -168,13 +168,6 @@ Emitted after the callback from L</create> has returned all the content of the C
 Emitted right before the callback from L</create> returns the tar header for the
 C<$file>.
 
-=head2 created
-
-  $tar->on(created => sub ($tar, @) { ... });
-
-Emitted right before the callback from L</create> returns the last chunk of the tar
-file.
-
 =head2 extracted
 
   $tar->on(extracted => sub ($tar, $file) { ... });
@@ -228,9 +221,8 @@ been processed. Example:
     warn sprintf qq(Got %sb of tar data\n), length $chunk;
   }
 
-The L</adding> and L</added> events will be emitted for each file and the
-L</created> event will be emitted at the very end. In addition L</is_complete>
-will also be set right before L</created> gets emitted.
+The L</adding> and L</added> events will be emitted for each file. In addition
+L</is_complete> will be set when all the L</files> has been processed.
 
 =head2 extract
 
