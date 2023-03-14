@@ -120,9 +120,9 @@ sub from_header ($self, $header) {
   $self->dev_major($fields[13]);
   $self->dev_minor($fields[14]);
 
-  warn sprintf "[tar:from_header] %s\n", join ' ',
-    map { sprintf '%s=%s', $_, $self->$_ }
-    qw(path mode uid gid size mtime checksum type symlink owner group)
+  warn sprintf
+    "[tar:from_header] path=%s mode=%s uid=%s gid=%s size=%s mtime=%s checksum=%s type=%s symlink=%s owner=%s group=%s\n",
+    map { $self->$_ } qw(path mode uid gid size mtime checksum type symlink owner group)
     if DEBUG;
 
   return $self;
