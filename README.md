@@ -62,13 +62,6 @@ Emitted after the callback from ["create"](#create) has returned all the content
 Emitted right before the callback from ["create"](#create) returns the tar header for the
 `$file`.
 
-## created
-
-    $tar->on(created => sub ($tar, @) { ... });
-
-Emitted right before the callback from ["create"](#create) returns the last chunk of the tar
-file.
-
 ## extracted
 
     $tar->on(extracted => sub ($tar, $file) { ... });
@@ -122,9 +115,8 @@ been processed. Example:
       warn sprintf qq(Got %sb of tar data\n), length $chunk;
     }
 
-The ["adding"](#adding) and ["added"](#added) events will be emitted for each file and the
-["created"](#created) event will be emitted at the very end. In addition ["is\_complete"](#is_complete)
-will also be set right before ["created"](#created) gets emitted.
+The ["adding"](#adding) and ["added"](#added) events will be emitted for each file. In addition
+["is\_complete"](#is_complete) will be set when all the ["files"](#files) has been processed.
 
 ## extract
 
